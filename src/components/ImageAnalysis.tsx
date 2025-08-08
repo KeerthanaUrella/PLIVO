@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useDropzone } from 'react-dropzone';
-import { describeImage, analyzeImageWithFocus } from '../utils/describeImage';
+// Removed unused imports - now using backend API directly
 
 interface ImageAnalysisResult {
   description: string;
@@ -12,6 +12,7 @@ interface ImageAnalysisResult {
   colors: string[];
   scene: string;
   confidence: number;
+  apiUsed?: string;
 }
 
 const ImageAnalysis: React.FC = () => {
@@ -22,6 +23,7 @@ const ImageAnalysis: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<ImageAnalysisResult | null>(null);
   const [error, setError] = useState<string>('');
+  const [apiChoice, setApiChoice] = useState<'openai' | 'huggingface' | 'google' | 'local'>('local');
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -141,11 +143,29 @@ const ImageAnalysis: React.FC = () => {
     setError('');
 
     try {
-      // Get AI description (will use demo mode if no API key)
-      const aiDescription = await describeImage(imageFile);
+      console.log('🚀 Frontend: Starting image analysis for:', imageFile.name);
+      console.log('🤖 Frontend: Using API:', apiChoice);
+      
+      const formData = new FormData();
+      formData.append('image', imageFile);
+      formData.append('apiChoice', apiChoice);
+
+      const response = await fetch('http://localhost:3001/api/describe-image', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('✅ Frontend: AI analysis completed successfully');
       
       // Extract structured information from the description
-      const analysisResult = extractInfoFromDescription(aiDescription);
+      const analysisResult = extractInfoFromDescription(data.description);
+      analysisResult.apiUsed = data.apiUsed;
       
       setResult(analysisResult);
     } catch (err) {
@@ -216,6 +236,26 @@ const ImageAnalysis: React.FC = () => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="card">
                 <div className="form-group">
+                  <label className="form-label">Image Analysis API</label>
+                  <select
+                    value={apiChoice}
+                    onChange={(e) => setApiChoice(e.target.value as 'openai' | 'huggingface' | 'google' | 'local')}
+                    className="input"
+                  >
+                    <option value="local">Local Analysis (No API Key Required)</option>
+                    <option value="huggingface">Hugging Face API (Free Tier)</option>
+                    <option value="google">Google Vision API (Requires API Key)</option>
+                    <option value="openai">OpenAI GPT-4 Vision (Requires API Key)</option>
+                  </select>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {apiChoice === 'local' && 'Uses basic local processing - no external API calls'}
+                    {apiChoice === 'huggingface' && 'Uses Hugging Face image models - requires HUGGINGFACE_API_KEY'}
+                    {apiChoice === 'google' && 'Uses Google Vision API for detailed analysis - requires GOOGLE_VISION_API_KEY'}
+                    {apiChoice === 'openai' && 'Uses OpenAI GPT-4 Vision for advanced analysis - requires OPENAI_API_KEY'}
+                  </p>
+                </div>
+
+                <div className="form-group">
                   <label className="form-label">Upload Image</label>
                   <div 
                     {...getRootProps()} 
@@ -266,39 +306,19 @@ const ImageAnalysis: React.FC = () => {
                   </div>
                 )}
 
-                {/* API Key Setup Instructions */}
-                {(() => {
-                  const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-                  console.log('🔍 Component API Key check:', apiKey ? 'Found' : 'Not found');
-                  console.log('🔍 Component API Key length:', apiKey ? apiKey.length : 0);
-                  
-                  return !apiKey ? (
-                    <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <h4 className="font-medium text-yellow-800 mb-2">🔑 Setup Required</h4>
-                      <p className="text-sm text-yellow-700 mb-2">
-                        To use AI-powered image analysis, you need to:
-                      </p>
-                      <ol className="text-sm text-yellow-700 list-decimal list-inside space-y-1">
-                        <li>Get an OpenAI API key from <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="underline">platform.openai.com</a></li>
-                        <li>Create a <code>.env.local</code> file in your project root</li>
-                        <li>Add: <code>VITE_OPENAI_API_KEY=your_actual_api_key</code></li>
-                        <li>Restart your development server</li>
-                      </ol>
-                      <p className="text-sm text-red-600 mt-2">
-                        Current status: API key not detected
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="mt-4 p-4 bg-green-50 border border-green-200 rounded-lg">
-                      <p className="text-sm text-green-700">
-                        ✅ OpenAI API key configured. AI analysis is ready!
-                      </p>
-                      <p className="text-sm text-green-600 mt-1">
-                        API key length: {apiKey.length} characters
-                      </p>
-                    </div>
-                  );
-                })()}
+                {/* API Information */}
+                <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <h4 className="font-medium text-blue-800 mb-2">🔧 API Options</h4>
+                  <p className="text-sm text-blue-700 mb-2">
+                    Choose your preferred image analysis method:
+                  </p>
+                  <ul className="text-sm text-blue-700 list-disc list-inside space-y-1">
+                    <li><strong>Local Analysis:</strong> Works immediately, no API key needed</li>
+                    <li><strong>Hugging Face:</strong> Free tier, requires HUGGINGFACE_API_KEY</li>
+                    <li><strong>Google Vision:</strong> Detailed analysis, requires GOOGLE_VISION_API_KEY</li>
+                    <li><strong>OpenAI GPT-4:</strong> Best quality, requires OPENAI_API_KEY</li>
+                  </ul>
+                </div>
               </div>
 
               <div className="card">
@@ -386,7 +406,7 @@ const ImageAnalysis: React.FC = () => {
                     </div>
 
                     <div className="result-section">
-                      <h3>📊 AI Confidence</h3>
+                      <h3>📊 Analysis Details</h3>
                       <div className="result-content">
                         <div className="w-full bg-gray-200 rounded-full h-2.5">
                           <div 
@@ -396,6 +416,9 @@ const ImageAnalysis: React.FC = () => {
                         </div>
                         <p className="text-sm text-gray-600 mt-1">
                           {result.confidence}% confidence in AI analysis
+                        </p>
+                        <p className="text-sm text-gray-600 mt-2">
+                          <strong>API Used:</strong> {result.apiUsed || 'local'}
                         </p>
                       </div>
                     </div>
