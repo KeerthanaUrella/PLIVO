@@ -8,6 +8,7 @@ interface SummarizationResult {
   wordCount: number;
   keyPoints: string[];
   documentType: string;
+  apiUsed?: string;
 }
 
 const DocumentSummarization: React.FC = () => {
@@ -19,6 +20,7 @@ const DocumentSummarization: React.FC = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<SummarizationResult | null>(null);
   const [error, setError] = useState<string>('');
+  const [apiChoice, setApiChoice] = useState<'openai' | 'huggingface' | 'local'>('local');
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     const file = acceptedFiles[0];
@@ -136,43 +138,76 @@ const DocumentSummarization: React.FC = () => {
     }
   };
 
-  // Function to generate summary using simple algorithm
-  const generateSummary = async (text: string): Promise<SummarizationResult> => {
+  // Function to generate summary using AI backend
+  const generateSummary = async (text: string, documentType: string): Promise<SummarizationResult> => {
     try {
-      const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
-      const wordCount = text.split(/\s+/).length;
+      console.log('🚀 Frontend: Starting AI summarization for:', documentType);
+      console.log('🤖 Frontend: Using API:', apiChoice);
       
-      // Simple extractive summarization (take first few sentences)
-      const summarySentences = sentences.slice(0, Math.min(3, sentences.length));
-      const summary = summarySentences.join('. ') + '.';
-      
-      // Extract key points (simple keyword extraction)
-      const words = text.toLowerCase().split(/\s+/);
-      const wordFreq: { [key: string]: number } = {};
-      const stopWords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could', 'should', 'may', 'might', 'can', 'this', 'that', 'these', 'those', 'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'us', 'them']);
-      
-      words.forEach(word => {
-        const cleanWord = word.replace(/[^\w]/g, '');
-        if (cleanWord.length > 3 && !stopWords.has(cleanWord)) {
-          wordFreq[cleanWord] = (wordFreq[cleanWord] || 0) + 1;
-        }
+      // Send to backend API
+      const response = await fetch('http://localhost:3001/api/summarize-document', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          content: text,
+          documentType: documentType,
+          apiChoice: apiChoice
+        }),
       });
       
-      const keyWords = Object.entries(wordFreq)
-        .sort(([,a], [,b]) => b - a)
-        .slice(0, 5)
-        .map(([word]) => word);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
       
-      const keyPoints = keyWords.map(word => `• ${word.charAt(0).toUpperCase() + word.slice(1)}`);
+      const data = await response.json();
+      console.log('✅ Frontend: AI summarization completed successfully');
       
       return {
-        summary,
-        wordCount,
-        keyPoints,
-        documentType: 'text'
+        summary: data.summary,
+        wordCount: data.wordCount,
+        keyPoints: data.keyPoints || [],
+        documentType: data.documentType
       };
     } catch (error) {
-      throw new Error('Failed to generate summary');
+      console.error('❌ Frontend Error:', error);
+      throw new Error(`Failed to generate summary: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  };
+
+  // Function to summarize URL using AI backend
+  const summarizeURL = async (url: string): Promise<SummarizationResult> => {
+    try {
+      console.log('🚀 Frontend: Starting URL summarization for:', url);
+      
+      // Send to backend API
+      const response = await fetch('http://localhost:3001/api/summarize-url', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      console.log('✅ Frontend: URL summarization completed successfully');
+      
+      return {
+        summary: data.summary,
+        wordCount: data.wordCount,
+        keyPoints: data.keyPoints || [],
+        documentType: data.documentType
+      };
+    } catch (error) {
+      console.error('❌ Frontend Error:', error);
+      throw new Error(`Failed to summarize URL: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   };
 
@@ -198,6 +233,7 @@ const DocumentSummarization: React.FC = () => {
 
     try {
       let extractedText = '';
+      let documentType: string = 'unknown';
 
       if (inputType === 'file' && documentFile) {
         // Extract text from uploaded file based on type
@@ -206,21 +242,25 @@ const DocumentSummarization: React.FC = () => {
         if (fileExtension === 'pdf') {
           console.log('Processing PDF file:', documentFile.name);
           extractedText = await extractTextFromPDF(documentFile);
+          documentType = 'pdf';
           console.log('Extracted text length:', extractedText.length);
         } else {
           extractedText = await extractTextFromFile(documentFile);
+          documentType = fileExtension || 'text';
         }
       } else if (inputType === 'url' && url) {
-        // Extract text from URL
-        extractedText = await fetchContentFromURL(url);
+        // For URLs, use the dedicated URL summarization endpoint
+        const summaryResult = await summarizeURL(url);
+        setResult(summaryResult);
+        return; // Exit early for URL processing
       }
 
       if (!extractedText.trim()) {
         throw new Error('No text content found in the document. The PDF might be image-based or contain no extractable text.');
       }
 
-      // Generate summary
-      const summaryResult = await generateSummary(extractedText);
+      // Generate summary for file uploads
+      const summaryResult = await generateSummary(extractedText, documentType);
       setResult(summaryResult);
       
     } catch (err) {
@@ -305,6 +345,24 @@ const DocumentSummarization: React.FC = () => {
                 </div>
               </div>
 
+              <div className="form-group">
+                <label className="form-label">Summarization API</label>
+                <select
+                  value={apiChoice}
+                  onChange={(e) => setApiChoice(e.target.value as 'openai' | 'huggingface' | 'local')}
+                  className="input"
+                >
+                  <option value="local">Local Algorithm (No API Key Required)</option>
+                  <option value="huggingface">Hugging Face API (Free Tier)</option>
+                  <option value="openai">OpenAI GPT-4 (Requires API Key)</option>
+                </select>
+                <p className="text-sm text-gray-600 mt-1">
+                  {apiChoice === 'local' && 'Uses local text processing - no external API calls'}
+                  {apiChoice === 'huggingface' && 'Uses Hugging Face summarization model - requires HUGGINGFACE_API_KEY'}
+                  {apiChoice === 'openai' && 'Uses OpenAI GPT-4 for advanced summarization - requires OPENAI_API_KEY'}
+                </p>
+              </div>
+
               {inputType === 'file' ? (
                 <div className="form-group">
                   <label className="form-label">Upload Document</label>
@@ -381,6 +439,7 @@ const DocumentSummarization: React.FC = () => {
                     <div className="result-content">
                       <p><strong>Word Count:</strong> {result.wordCount.toLocaleString()}</p>
                       <p><strong>Document Type:</strong> {result.documentType}</p>
+                      <p><strong>API Used:</strong> {result.apiUsed || 'local'}</p>
                     </div>
                   </div>
 
