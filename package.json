@@ -1,0 +1,33 @@
+{
+  "name": "ai-playground-app",
+  "version": "1.0.0",
+  "description": "Multi-modal AI Playground Application",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "vite",
+    "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.8.0",
+    "axios": "^1.3.0",
+    "lucide-react": "^0.263.1",
+    "react-dropzone": "^14.2.3",
+    "react-hot-toast": "^2.4.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.0.27",
+    "@types/react-dom": "^18.0.10",
+    "@vitejs/plugin-react": "^3.1.0",
+    "typescript": "^4.9.5",
+    "vite": "^4.1.0"
+  },
+  "keywords": ["ai", "playground", "multimodal", "react"],
+  "author": "AI Playground Developer",
+  "license": "MIT"
+}
